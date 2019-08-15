@@ -1,6 +1,10 @@
+extern crate image;
+
 use std::io;
 use std::io::{Read,Write};
 use std::io::{BufReader, BufWriter};
+
+use image::{ImageBuffer,RgbImage,ImageRgb8,FilterType};
 
 const WIDTH: usize = 1280;
 const HEIGHT: usize = 720;
@@ -21,7 +25,14 @@ fn main() {
             }
             Ok(()) => ()
         }
-        match bw.write_all(&frame) {
+
+        let ib: RgbImage = ImageBuffer::from_raw(WIDTH as u32, HEIGHT as u32, frame.to_vec()).expect("Cannot create ImageBuffer");
+        let cropped = ImageRgb8(ib).crop((WIDTH / 4) as u32, (HEIGHT / 4) as u32,
+                (WIDTH / 2) as u32, (HEIGHT / 2) as u32); // TODO parameterize this
+        let resized = cropped.resize_exact(WIDTH as u32, HEIGHT as u32, FilterType::CatmullRom);
+        let resized8 = resized.as_rgb8().expect("Cannot convert to RGB8");
+
+        match bw.write_all(&resized8) {
             Err(e) => match e.kind() {
                 io::ErrorKind::BrokenPipe => return (),
                 _ => panic!("Can't write frame: {}", e),
