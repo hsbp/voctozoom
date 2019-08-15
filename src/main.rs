@@ -2,12 +2,17 @@ use std::io;
 use std::io::{Read,Write};
 use std::io::{BufReader, BufWriter};
 
+const WIDTH: usize = 1280;
+const HEIGHT: usize = 720;
+const BYTES_PER_PIXEL: usize = 3;
+const BYTES_PER_FRAME: usize = WIDTH * HEIGHT * BYTES_PER_PIXEL;
+
 fn main() {
     let stdin = io::stdin();
     let mut br = BufReader::new(stdin.lock());
     let stdout = io::stdout();
     let mut bw = BufWriter::new(stdout.lock());
-    let mut frame: [u8; 1280 * 720 * 3] = [0; 1280 * 720 * 3];
+    let mut frame: [u8; BYTES_PER_FRAME] = [0; BYTES_PER_FRAME];
     loop {
         match br.read_exact(& mut frame) {
             Err(e) => match e.kind() {
