@@ -5,3 +5,4 @@ authors = ["András Veres-Szentkirályi <vsza@vsza.hu>"]
 edition = "2018"
 
 [dependencies]
+image = "*"
