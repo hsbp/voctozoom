@@ -1,7 +1,7 @@
 extern crate image;
 
 use std::io;
-use std::io::{BufRead,BufReader,BufWriter,Read,Write};
+use std::io::{BufRead,BufReader,BufWriter,Read,Stdin,Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex,MutexGuard};
 use std::thread;
@@ -24,7 +24,6 @@ struct Crop {
 
 fn main() {
     let stdin = io::stdin();
-    let mut sil = stdin.lock();
     let stdout = io::stdout();
     let mut sol = stdout.lock();
     let mut frame: [u8; BYTES_PER_FRAME] = [0; BYTES_PER_FRAME];
@@ -90,15 +89,16 @@ fn main() {
     });
 
     loop {
-        match sil.read_exact(& mut frame) {
-            Err(e) => match e.kind() {
-                io::ErrorKind::UnexpectedEof => return (),
-                _ => panic!("Can't read frame: {}", e),
-            }
-            Ok(()) => ()
-        }
-
         if is_full_screen(crop_read.lock().expect("Cannot lock crop parameters for checking")) {
+            let mut sil = stdin.lock();
+            match sil.read_exact(& mut frame) {
+                Err(e) => match e.kind() {
+                    io::ErrorKind::UnexpectedEof => return (),
+                    _ => panic!("Can't read frame: {}", e),
+                }
+                Ok(()) => ()
+            }
+
             match sol.write_all(&frame) {
                 Err(e) => match e.kind() {
                     io::ErrorKind::BrokenPipe => return (),
@@ -107,9 +107,12 @@ fn main() {
                 Ok(()) => ()
             }
         } else {
-            let ib: RgbImage = ImageBuffer::from_raw(WIDTH as u32, HEIGHT as u32, frame.to_vec()).expect("Cannot create ImageBuffer");
-            let cropped = my_crop(ImageRgb8(ib), crop_read.lock().expect("Cannot lock crop parameters for reading"));
-            let resized = cropped.resize_exact(WIDTH as u32, HEIGHT as u32, FilterType::CatmullRom);
+            // TODO measure cropping here vs. cropping during read
+            let resized = match read_cropped(&crop_read, &stdin) {
+                Some(cropped) => cropped.resize_exact(WIDTH as u32, HEIGHT as u32, FilterType::CatmullRom),
+                None => return ()
+            };
+
             let resized8 = resized.as_rgb8().expect("Cannot convert to RGB8");
 
             match sol.write_all(&resized8) {
@@ -121,6 +124,23 @@ fn main() {
             }
         }
     }
+}
+
+fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<DynamicImage> {
+    let mut frame: [u8; BYTES_PER_FRAME] = [0; BYTES_PER_FRAME];
+    {
+        let mut sil = stdin.lock();
+        match sil.read_exact(& mut frame) {
+            Err(e) => match e.kind() {
+                io::ErrorKind::UnexpectedEof => return None,
+                _ => panic!("Can't read frame: {}", e),
+            }
+            Ok(()) => ()
+        }
+    }
+
+    let ib: RgbImage = ImageBuffer::from_raw(WIDTH as u32, HEIGHT as u32, frame.to_vec()).expect("Cannot create ImageBuffer");
+    return Some(my_crop(ImageRgb8(ib), p.lock().expect("Cannot lock crop parameters for reading")));
 }
 
 fn is_full_screen(p: MutexGuard<Crop>) -> bool {
