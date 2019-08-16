@@ -127,10 +127,50 @@ fn main() {
 }
 
 fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<DynamicImage> {
-    let mut frame: [u8; BYTES_PER_FRAME] = [0; BYTES_PER_FRAME];
+    let crop = p.lock().expect("Cannot lock crop parameters for reading");
+
+    let mut skip_front: Vec<u8> = vec![0; (crop.y as usize * WIDTH + crop.x as usize) * BYTES_PER_PIXEL];
+    let mut skip_line: Vec<u8> = vec![0; (WIDTH - crop.w as usize) * BYTES_PER_PIXEL];
+    let mut line: Vec<u8> = vec![0; (crop.w as usize) * BYTES_PER_PIXEL];
+    let mut skip_back: Vec<u8> = vec![0; (WIDTH - crop.w as usize - crop.x as usize + (HEIGHT - crop.y as usize - crop.h as usize) * WIDTH) * BYTES_PER_PIXEL];
+
+    let mut frame: Vec<u8> = Vec::with_capacity(crop.w as usize * crop.h as usize * BYTES_PER_PIXEL);
+
     {
         let mut sil = stdin.lock();
-        match sil.read_exact(& mut frame) {
+        match sil.read_exact(& mut skip_front) {
+            Err(e) => match e.kind() {
+                io::ErrorKind::UnexpectedEof => return None,
+                _ => panic!("Can't read frame: {}", e),
+            }
+            Ok(()) => ()
+        }
+        match sil.read_exact(& mut line) {
+            Err(e) => match e.kind() {
+                io::ErrorKind::UnexpectedEof => return None,
+                _ => panic!("Can't read frame: {}", e),
+            }
+            Ok(()) => ()
+        }
+        frame.extend(line.iter().cloned());
+        for _ in 1..crop.h {
+            match sil.read_exact(& mut skip_line) {
+                Err(e) => match e.kind() {
+                    io::ErrorKind::UnexpectedEof => return None,
+                    _ => panic!("Can't read frame: {}", e),
+                }
+                Ok(()) => ()
+            }
+            match sil.read_exact(& mut line) {
+                Err(e) => match e.kind() {
+                    io::ErrorKind::UnexpectedEof => return None,
+                    _ => panic!("Can't read frame: {}", e),
+                }
+                Ok(()) => ()
+            }
+            frame.extend(line.iter().cloned());
+        }
+        match sil.read_exact(& mut skip_back) {
             Err(e) => match e.kind() {
                 io::ErrorKind::UnexpectedEof => return None,
                 _ => panic!("Can't read frame: {}", e),
@@ -139,14 +179,10 @@ fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<DynamicImage> {
         }
     }
 
-    let ib: RgbImage = ImageBuffer::from_raw(WIDTH as u32, HEIGHT as u32, frame.to_vec()).expect("Cannot create ImageBuffer");
-    return Some(my_crop(ImageRgb8(ib), p.lock().expect("Cannot lock crop parameters for reading")));
+    let ib: RgbImage = ImageBuffer::from_raw(crop.w as u32, crop.h as u32, frame).expect("Cannot create ImageBuffer");
+    return Some(ImageRgb8(ib));
 }
 
 fn is_full_screen(p: MutexGuard<Crop>) -> bool {
     return *p == FULL_CROP;
-}
-
-fn my_crop(mut img: DynamicImage, p: MutexGuard<Crop>) -> DynamicImage {
-    return img.crop(p.x as u32, p.y as u32, p.w as u32, p.h as u32);
 }
