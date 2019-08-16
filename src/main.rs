@@ -1,7 +1,8 @@
 extern crate image;
 
 use std::io;
-use std::io::{Read,Write};
+use std::io::{BufRead,BufReader,BufWriter,Read,Write};
+use std::net::TcpListener;
 use std::sync::{Arc, Mutex,MutexGuard};
 use std::thread;
 
@@ -31,14 +32,58 @@ fn main() {
     let crop_write = crop.clone();
 
     thread::spawn(move || {
-        // TODO replace with socket based remote updates
-        for i in 0..10 {
-            thread::sleep_ms(1000);
-            let mut params = crop_write.lock().expect("Cannot lock crop parameters for writing");
-            params.x = i * 50;
-            params.y = i * 25;
-            params.w = WIDTH  as u16 - params.x * 2;
-            params.h = HEIGHT as u16 - params.y * 2;
+        let listener = TcpListener::bind("127.0.0.1:20000").expect("Cannot bind to port 20000");
+
+        'streams: for accepted in listener.incoming() {
+            let stream = accepted.expect("Cannot accept connection");
+            let br = BufReader::new(&stream);
+            let mut bw = BufWriter::new(&stream);
+            'lines: for line in br.lines() {
+                let payload = match line {
+                    Err(_) => continue 'streams,
+                    Ok(p) => p,
+                };
+                let parts: Vec<&str> = payload.trim().split(" ").collect();
+                if parts[0] == "zoom_to" {
+                    if parts.len() < 2 {
+                        bw.write(b"Missing parameter\n");
+                        bw.flush();
+                        continue 'lines;
+                    }
+                    let params: Vec<&str> = parts[1].split("+").collect();
+                    let resolution: Vec<Result<u16, std::num::ParseIntError>> = params[0].split("x").map(|s| s.parse::<u16>()).collect();
+                    let offsets: Vec<Result<u16, std::num::ParseIntError>> = params.iter().skip(1).map(|s| s.parse::<u16>()).collect();
+                    if resolution.len() != 2 || offsets.len() != 2 || resolution.iter().chain(offsets.iter()).any(Result::is_err) {
+                        bw.write(b"Incorrect resolution syntax\n");
+                        bw.flush();
+                        continue 'lines;
+                    }
+                    let w = *(resolution[0].as_ref().unwrap());
+                    let h = *(resolution[1].as_ref().unwrap());
+                    let x = *(offsets[0].as_ref().unwrap());
+                    let y = *(offsets[1].as_ref().unwrap());
+                    if w as usize + x as usize > WIDTH {
+                        bw.write(b"Viewport is outside the screen in horizontal direction\n");
+                        bw.flush();
+                        continue 'lines;
+                    }
+                    if h as usize + y as usize > HEIGHT {
+                        bw.write(b"Viewport is outside the screen in vertical direction\n");
+                        bw.flush();
+                        continue 'lines;
+                    }
+                    let mut params = crop_write.lock().expect("Cannot lock crop parameters for writing");
+                    params.x = x;
+                    params.y = y;
+                    params.w = w;
+                    params.h = h;
+                    bw.write(b"OK\n");
+                    bw.flush();
+                } else {
+                    bw.write(b"Unknown command\n");
+                    bw.flush();
+                }
+            }
         }
     });
 
