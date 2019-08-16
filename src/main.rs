@@ -12,7 +12,9 @@ const WIDTH: usize = 1280;
 const HEIGHT: usize = 720;
 const BYTES_PER_PIXEL: usize = 3;
 const BYTES_PER_FRAME: usize = WIDTH * HEIGHT * BYTES_PER_PIXEL;
+const FULL_CROP: Crop = Crop { x: 0, y: 0, w: WIDTH as u16, h: HEIGHT as u16 };
 
+#[derive(Copy, Clone, PartialEq, Eq)]
 struct Crop {
     x: u16,
     y: u16,
@@ -27,7 +29,7 @@ fn main() {
     let mut sol = stdout.lock();
     let mut frame: [u8; BYTES_PER_FRAME] = [0; BYTES_PER_FRAME];
 
-    let crop = Arc::new(Mutex::new(Crop { x: 0, y: 0, w: WIDTH as u16, h: HEIGHT as u16 }));
+    let crop = Arc::new(Mutex::new(FULL_CROP));
     let crop_read = crop.clone();
     let crop_write = crop.clone();
 
@@ -96,19 +98,33 @@ fn main() {
             Ok(()) => ()
         }
 
-        let ib: RgbImage = ImageBuffer::from_raw(WIDTH as u32, HEIGHT as u32, frame.to_vec()).expect("Cannot create ImageBuffer");
-        let cropped = my_crop(ImageRgb8(ib), crop_read.lock().expect("Cannot lock crop parameters for reading"));
-        let resized = cropped.resize_exact(WIDTH as u32, HEIGHT as u32, FilterType::CatmullRom);
-        let resized8 = resized.as_rgb8().expect("Cannot convert to RGB8");
-
-        match sol.write_all(&resized8) {
-            Err(e) => match e.kind() {
-                io::ErrorKind::BrokenPipe => return (),
-                _ => panic!("Can't write frame: {}", e),
+        if is_full_screen(crop_read.lock().expect("Cannot lock crop parameters for checking")) {
+            match sol.write_all(&frame) {
+                Err(e) => match e.kind() {
+                    io::ErrorKind::BrokenPipe => return (),
+                    _ => panic!("Can't write frame: {}", e),
+                }
+                Ok(()) => ()
             }
-            Ok(()) => ()
+        } else {
+            let ib: RgbImage = ImageBuffer::from_raw(WIDTH as u32, HEIGHT as u32, frame.to_vec()).expect("Cannot create ImageBuffer");
+            let cropped = my_crop(ImageRgb8(ib), crop_read.lock().expect("Cannot lock crop parameters for reading"));
+            let resized = cropped.resize_exact(WIDTH as u32, HEIGHT as u32, FilterType::CatmullRom);
+            let resized8 = resized.as_rgb8().expect("Cannot convert to RGB8");
+
+            match sol.write_all(&resized8) {
+                Err(e) => match e.kind() {
+                    io::ErrorKind::BrokenPipe => return (),
+                    _ => panic!("Can't write frame: {}", e),
+                }
+                Ok(()) => ()
+            }
         }
     }
+}
+
+fn is_full_screen(p: MutexGuard<Crop>) -> bool {
+    return *p == FULL_CROP;
 }
 
 fn my_crop(mut img: DynamicImage, p: MutexGuard<Crop>) -> DynamicImage {
