@@ -29,7 +29,8 @@ fn main() {
     let crop_read = crop.clone();
     let crop_write = crop.clone();
     let mut scaler: Option<Child> = None;
-    let mut scaler_crop = FULL_CROP;
+    let mut scaler_w = FULL_CROP.w;
+    let mut scaler_h = FULL_CROP.h;
 
     thread::spawn(move || {
         let listener = TcpListener::bind("127.0.0.1:20000").expect("Cannot bind to port 20000");
@@ -100,6 +101,8 @@ fn main() {
                             }
                             Ok(()) => ()
                         }
+                        scaler_w = FULL_CROP.w;
+                        scaler_h = FULL_CROP.h;
                     },
                 None => ()
             }
@@ -128,7 +131,7 @@ fn main() {
 
             {
                 let crop_check = crop_read.lock().expect("Cannot lock crop parameters for checking");
-                if scaler_crop != *crop_check {
+                if scaler_w != crop_check.w || scaler_h != crop_check.h {
                     match scaler {
                         Some(ffmpeg) => {
                                 let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
@@ -142,12 +145,13 @@ fn main() {
                             },
                         None => ()
                     }
-                    scaler_crop = *crop_check;
+                    scaler_w = crop_check.w;
+                    scaler_h = crop_check.h;
                     scaler = Some(Command::new("ffmpeg")
                         .arg("-loglevel").arg("quiet")
                         .arg("-f").arg("rawvideo")
                         .arg("-pixel_format").arg("rgb24")
-                        .arg("-s").arg(format!("{}x{}", scaler_crop.w, scaler_crop.h))
+                        .arg("-s").arg(format!("{}x{}", scaler_w, scaler_h))
                         .arg("-i").arg("-")
                         .arg("-filter:v").arg(format!("scale={}:{}", WIDTH, HEIGHT))
                         .arg("-f").arg("rawvideo")
@@ -167,7 +171,7 @@ fn main() {
                     let mut write_offset: usize = 0;
                     let ffmpeg_stdin = ffmpeg.stdin.as_mut().expect("failed to get stdin");
                     let ffmpeg_stdout = ffmpeg.stdout.as_mut().expect("failed to get stdout");
-                    let expected_read = (scaler_crop.w * scaler_crop.h) as usize * BYTES_PER_PIXEL;
+                    let expected_read = (scaler_w * scaler_h) as usize * BYTES_PER_PIXEL;
 
                     while read_offset < expected_read || write_offset < BYTES_PER_FRAME {
                         if read_offset < expected_read {
