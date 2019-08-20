@@ -1,12 +1,9 @@
-extern crate image;
-
 use std::io;
 use std::io::{BufRead,BufReader,BufWriter,Read,Stdin,Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex,MutexGuard};
 use std::thread;
-
-use image::{ImageBuffer,RgbImage,ImageRgb8,FilterType,DynamicImage};
+use std::process::{Command, Stdio, Child};
 
 const WIDTH: usize = 1280;
 const HEIGHT: usize = 720;
@@ -31,6 +28,8 @@ fn main() {
     let crop = Arc::new(Mutex::new(FULL_CROP));
     let crop_read = crop.clone();
     let crop_write = crop.clone();
+    let mut scaler: Option<Child> = None;
+    let mut scaler_crop = FULL_CROP;
 
     thread::spawn(move || {
         let listener = TcpListener::bind("127.0.0.1:20000").expect("Cannot bind to port 20000");
@@ -90,6 +89,20 @@ fn main() {
 
     loop {
         if is_full_screen(crop_read.lock().expect("Cannot lock crop parameters for checking")) {
+            match scaler {
+                Some(ffmpeg) => {
+                        let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
+                        scaler = None;
+                        match sol.write_all(&out.stdout) {
+                            Err(e) => match e.kind() {
+                                io::ErrorKind::BrokenPipe => return (),
+                                _ => panic!("Can't write old scaler output frame: {}", e),
+                            }
+                            Ok(()) => ()
+                        }
+                    },
+                None => ()
+            }
             let mut sil = stdin.lock();
             match sil.read_exact(& mut frame) {
                 Err(e) => match e.kind() {
@@ -108,25 +121,81 @@ fn main() {
             }
         } else {
             // TODO measure cropping here vs. cropping during read
-            let resized = match read_cropped(&crop_read, &stdin) {
-                Some(cropped) => cropped.resize_exact(WIDTH as u32, HEIGHT as u32, FilterType::CatmullRom),
+            let cropped = match read_cropped(&crop_read, &stdin) {
+                Some(c) => c,
                 None => return ()
             };
 
-            let resized8 = resized.as_rgb8().expect("Cannot convert to RGB8");
-
-            match sol.write_all(&resized8) {
-                Err(e) => match e.kind() {
-                    io::ErrorKind::BrokenPipe => return (),
-                    _ => panic!("Can't write frame: {}", e),
+            {
+                let crop_check = crop_read.lock().expect("Cannot lock crop parameters for checking");
+                if scaler_crop != *crop_check {
+                    match scaler {
+                        Some(ffmpeg) => {
+                                let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
+                                match sol.write_all(&out.stdout) {
+                                    Err(e) => match e.kind() {
+                                        io::ErrorKind::BrokenPipe => return (),
+                                        _ => panic!("Can't write old scaler output frame: {}", e),
+                                    }
+                                    Ok(()) => ()
+                                }
+                            },
+                        None => ()
+                    }
+                    scaler_crop = *crop_check;
+                    scaler = Some(Command::new("ffmpeg")
+                        .arg("-loglevel").arg("quiet")
+                        .arg("-f").arg("rawvideo")
+                        .arg("-pixel_format").arg("rgb24")
+                        .arg("-s").arg(format!("{}x{}", scaler_crop.w, scaler_crop.h))
+                        .arg("-i").arg("-")
+                        .arg("-filter:v").arg(format!("scale={}:{}", WIDTH, HEIGHT))
+                        .arg("-f").arg("rawvideo")
+                        .arg("-pixel_format").arg("rgb24")
+                        .arg("-")
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .spawn()
+                        .expect("failed to execute ffmpeg"));
                 }
-                Ok(()) => ()
+            }
+
+            {
+                let ffmpeg = scaler.as_mut().unwrap();
+                {
+                    let mut read_offset: usize = 0;
+                    let mut write_offset: usize = 0;
+                    let ffmpeg_stdin = ffmpeg.stdin.as_mut().expect("failed to get stdin");
+                    let ffmpeg_stdout = ffmpeg.stdout.as_mut().expect("failed to get stdout");
+                    let expected_read = (scaler_crop.w * scaler_crop.h) as usize * BYTES_PER_PIXEL;
+
+                    while read_offset < expected_read || write_offset < BYTES_PER_FRAME {
+                        if read_offset < expected_read {
+                            let bytes_written = ffmpeg_stdin.write(&cropped[read_offset..]).expect("failed to write frame to scaler");
+                            read_offset += bytes_written;
+                        }
+
+                        if write_offset < BYTES_PER_FRAME {
+                            let read_bytes = ffmpeg_stdout.read(& mut frame).expect("Can't read frames from scaler");
+                            if read_bytes == 0 { continue; }
+                            write_offset += read_bytes;
+
+                            match sol.write_all(&frame[0..read_bytes]) {
+                                Err(e) => match e.kind() {
+                                    io::ErrorKind::BrokenPipe => return (),
+                                    _ => panic!("Can't write frame: {}", e),
+                                }
+                                Ok(()) => ()
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<DynamicImage> {
+fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<Vec<u8>> {
     let crop = p.lock().expect("Cannot lock crop parameters for reading");
 
     let mut skip_front: Vec<u8> = vec![0; (crop.y as usize * WIDTH + crop.x as usize) * BYTES_PER_PIXEL];
@@ -179,8 +248,7 @@ fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<DynamicImage> {
         }
     }
 
-    let ib: RgbImage = ImageBuffer::from_raw(crop.w as u32, crop.h as u32, frame).expect("Cannot create ImageBuffer");
-    return Some(ImageRgb8(ib));
+    return Some(frame);
 }
 
 fn is_full_screen(p: MutexGuard<Crop>) -> bool {
