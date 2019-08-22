@@ -93,34 +93,15 @@ fn main() {
                 Some(ffmpeg) => {
                         let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
                         scaler = None;
-                        match sol.write_all(&out.stdout) {
-                            Err(e) => match e.kind() {
-                                io::ErrorKind::BrokenPipe => return (),
-                                _ => panic!("Can't write old scaler output frame: {}", e),
-                            }
-                            Ok(()) => ()
-                        }
+                        if check_errors_and_eof(sol.write_all(&out.stdout), "Can't write old scaler output frame") { return (); }
                         scaler_w = FULL_CROP.w;
                         scaler_h = FULL_CROP.h;
                     },
                 None => ()
             }
             let mut sil = stdin.lock();
-            match sil.read_exact(& mut frame) {
-                Err(e) => match e.kind() {
-                    io::ErrorKind::UnexpectedEof => return (),
-                    _ => panic!("Can't read frame: {}", e),
-                }
-                Ok(()) => ()
-            }
-
-            match sol.write_all(&frame) {
-                Err(e) => match e.kind() {
-                    io::ErrorKind::BrokenPipe => return (),
-                    _ => panic!("Can't write frame: {}", e),
-                }
-                Ok(()) => ()
-            }
+            if check_errors_and_eof(sil.read_exact(& mut frame),  "Can't read frame") { return (); }
+            if check_errors_and_eof(sol.write_all (&     frame), "Can't write frame") { return (); }
         } else {
             // TODO measure cropping here vs. cropping during read
             let cropped = match read_cropped(&crop_read, &stdin) {
@@ -133,13 +114,7 @@ fn main() {
                 if scaler_w != crop_check.w || scaler_h != crop_check.h {
                     if let Some(ffmpeg) = scaler {
                         let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
-                        match sol.write_all(&out.stdout) {
-                            Err(e) => match e.kind() {
-                                io::ErrorKind::BrokenPipe => return (),
-                                _ => panic!("Can't write old scaler output frame: {}", e),
-                            }
-                            Ok(()) => ()
-                        }
+                        if check_errors_and_eof(sol.write_all(&out.stdout), "Can't write old scaler output frame") { return (); }
                     }
                     scaler_w = crop_check.w;
                     scaler_h = crop_check.h;
@@ -180,13 +155,7 @@ fn main() {
                             if read_bytes == 0 { continue; }
                             write_offset += read_bytes;
 
-                            match sol.write_all(&frame[0..read_bytes]) {
-                                Err(e) => match e.kind() {
-                                    io::ErrorKind::BrokenPipe => return (),
-                                    _ => panic!("Can't write frame: {}", e),
-                                }
-                                Ok(()) => ()
-                            }
+                            if check_errors_and_eof(sol.write_all(&frame[0..read_bytes]), "Can't write frame") { return (); }
                         }
                     }
                 }
@@ -207,48 +176,30 @@ fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<Vec<u8>> {
 
     {
         let mut sil = stdin.lock();
-        match sil.read_exact(& mut skip_front) {
-            Err(e) => match e.kind() {
-                io::ErrorKind::UnexpectedEof => return None,
-                _ => panic!("Can't read frame: {}", e),
-            }
-            Ok(()) => ()
-        }
-        match sil.read_exact(& mut line) {
-            Err(e) => match e.kind() {
-                io::ErrorKind::UnexpectedEof => return None,
-                _ => panic!("Can't read frame: {}", e),
-            }
-            Ok(()) => ()
-        }
+        if check_errors_and_eof(sil.read_exact(& mut skip_front),    "Can't read frame") { return None; }
+        if check_errors_and_eof(sil.read_exact(& mut line),          "Can't read frame") { return None; }
+
         frame.extend(line.iter().cloned());
         for _ in 1..crop.h {
-            match sil.read_exact(& mut skip_line) {
-                Err(e) => match e.kind() {
-                    io::ErrorKind::UnexpectedEof => return None,
-                    _ => panic!("Can't read frame: {}", e),
-                }
-                Ok(()) => ()
-            }
-            match sil.read_exact(& mut line) {
-                Err(e) => match e.kind() {
-                    io::ErrorKind::UnexpectedEof => return None,
-                    _ => panic!("Can't read frame: {}", e),
-                }
-                Ok(()) => ()
-            }
+            if check_errors_and_eof(sil.read_exact(& mut skip_line), "Can't read frame") { return None; }
+            if check_errors_and_eof(sil.read_exact(& mut line),      "Can't read frame") { return None; }
             frame.extend(line.iter().cloned());
         }
-        match sil.read_exact(& mut skip_back) {
-            Err(e) => match e.kind() {
-                io::ErrorKind::UnexpectedEof => return None,
-                _ => panic!("Can't read frame: {}", e),
-            }
-            Ok(()) => ()
-        }
+        if check_errors_and_eof(sil.read_exact(& mut skip_back),     "Can't read frame") { return None; }
     }
 
     return Some(frame);
+}
+
+fn check_errors_and_eof<T>(result: Result<T, std::io::Error>, panic_msg: &str) -> bool {
+    match result {
+        Err(e) => match e.kind() {
+            io::ErrorKind::UnexpectedEof => true,
+            io::ErrorKind::BrokenPipe => true,
+            _ => panic!("{}: {}", panic_msg, e),
+        }
+        Ok(_) => false
+    }
 }
 
 fn is_full_screen(p: MutexGuard<Crop>) -> bool {
