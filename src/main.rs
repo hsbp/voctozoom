@@ -39,7 +39,7 @@ fn parse_zoom_to(parts: Vec<&str>) -> Result<Crop, &str> {
     if h as usize + y as usize > HEIGHT {
         return Err("Viewport is outside the screen in vertical direction");
     }
-    return Ok(Crop{ x, y, w, h });
+    Ok(Crop{ x, y, w, h })
 }
 
 fn main() {
@@ -185,7 +185,7 @@ fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<Vec<u8>> {
         if check_errors_and_eof(sil.read_exact(& mut skip_back),     "Can't read frame") { return None; }
     }
 
-    return Some(frame);
+    Some(frame)
 }
 
 fn check_errors_and_eof<T>(result: Result<T, std::io::Error>, panic_msg: &str) -> bool {
@@ -200,5 +200,5 @@ fn check_errors_and_eof<T>(result: Result<T, std::io::Error>, panic_msg: &str) -
 }
 
 fn is_full_screen(p: MutexGuard<Crop>) -> bool {
-    return *p == FULL_CROP;
+    *p == FULL_CROP
 }
