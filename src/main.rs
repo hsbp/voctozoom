@@ -89,15 +89,12 @@ fn main() {
 
     loop {
         if is_full_screen(crop_read.lock().expect("Cannot lock crop parameters for checking")) {
-            match scaler {
-                Some(ffmpeg) => {
-                        let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
-                        scaler = None;
-                        if check_errors_and_eof(sol.write_all(&out.stdout), "Can't write old scaler output frame") { return (); }
-                        scaler_w = FULL_CROP.w;
-                        scaler_h = FULL_CROP.h;
-                    },
-                None => ()
+            if let Some(ffmpeg) = scaler {
+                let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
+                scaler = None;
+                if check_errors_and_eof(sol.write_all(&out.stdout), "Can't write old scaler output frame") { return (); }
+                scaler_w = FULL_CROP.w;
+                scaler_h = FULL_CROP.h;
             }
             let mut sil = stdin.lock();
             if check_errors_and_eof(sil.read_exact(& mut frame),  "Can't read frame") { return (); }
