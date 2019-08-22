@@ -132,18 +132,15 @@ fn main() {
             {
                 let crop_check = crop_read.lock().expect("Cannot lock crop parameters for checking");
                 if scaler_w != crop_check.w || scaler_h != crop_check.h {
-                    match scaler {
-                        Some(ffmpeg) => {
-                                let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
-                                match sol.write_all(&out.stdout) {
-                                    Err(e) => match e.kind() {
-                                        io::ErrorKind::BrokenPipe => return (),
-                                        _ => panic!("Can't write old scaler output frame: {}", e),
-                                    }
-                                    Ok(()) => ()
-                                }
-                            },
-                        None => ()
+                    if let Some(ffmpeg) = scaler {
+                        let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
+                        match sol.write_all(&out.stdout) {
+                            Err(e) => match e.kind() {
+                                io::ErrorKind::BrokenPipe => return (),
+                                _ => panic!("Can't write old scaler output frame: {}", e),
+                            }
+                            Ok(()) => ()
+                        }
                     }
                     scaler_w = crop_check.w;
                     scaler_h = crop_check.h;
