@@ -100,7 +100,6 @@ fn main() {
             if check_errors_and_eof(sil.read_exact(& mut frame),  "Can't read frame") { return (); }
             if check_errors_and_eof(sol.write_all (&     frame), "Can't write frame") { return (); }
         } else {
-            // TODO measure cropping here vs. cropping during read
             let cropped = match read_cropped(&crop_read, &stdin) {
                 Some(c) => c,
                 None => return ()
