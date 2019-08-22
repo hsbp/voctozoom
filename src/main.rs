@@ -171,19 +171,17 @@ fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<Vec<u8>> {
 
     let mut frame: Vec<u8> = Vec::with_capacity(crop.w as usize * crop.h as usize * BYTES_PER_PIXEL);
 
-    {
-        let mut sil = stdin.lock();
-        if check_errors_and_eof(sil.read_exact(& mut skip_front),    "Can't read frame") { return None; }
-        if check_errors_and_eof(sil.read_exact(& mut line),          "Can't read frame") { return None; }
+    let mut sil = stdin.lock();
+    if check_errors_and_eof(sil.read_exact(& mut skip_front),    "Can't read frame") { return None; }
+    if check_errors_and_eof(sil.read_exact(& mut line),          "Can't read frame") { return None; }
 
+    frame.extend(line.iter().cloned());
+    for _ in 1..crop.h {
+        if check_errors_and_eof(sil.read_exact(& mut skip_line), "Can't read frame") { return None; }
+        if check_errors_and_eof(sil.read_exact(& mut line),      "Can't read frame") { return None; }
         frame.extend(line.iter().cloned());
-        for _ in 1..crop.h {
-            if check_errors_and_eof(sil.read_exact(& mut skip_line), "Can't read frame") { return None; }
-            if check_errors_and_eof(sil.read_exact(& mut line),      "Can't read frame") { return None; }
-            frame.extend(line.iter().cloned());
-        }
-        if check_errors_and_eof(sil.read_exact(& mut skip_back),     "Can't read frame") { return None; }
     }
+    if check_errors_and_eof(sil.read_exact(& mut skip_back),     "Can't read frame") { return None; }
 
     Some(frame)
 }
