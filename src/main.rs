@@ -1,7 +1,7 @@
 use std::io;
 use std::io::{BufRead,BufReader,BufWriter,Read,Stdin,Write};
 use std::net::TcpListener;
-use std::sync::{Arc, Mutex,MutexGuard};
+use std::sync::{mpsc,Arc,Mutex,MutexGuard};
 use std::thread;
 use std::process::{Command, Stdio, Child};
 
@@ -55,6 +55,9 @@ fn main() {
     let mut scaler_w = FULL_CROP.w;
     let mut scaler_h = FULL_CROP.h;
 
+    let (img_req_tx,  img_req_rx)  = mpsc::channel();
+    let (img_resp_tx, img_resp_rx): (mpsc::Sender<Option<Vec<u8>>>, mpsc::Receiver<Option<Vec<u8>>>) = mpsc::channel();
+
     thread::spawn(move || {
         let listener = TcpListener::bind("127.0.0.1:20000").expect("Cannot bind to port 20000");
 
@@ -80,6 +83,14 @@ fn main() {
                     bw.write(&format!("{}\n", reply).into_bytes());
                 } else if parts[0] == "get_resolution" {
                     bw.write(&format!("{}x{}\n", WIDTH, HEIGHT).into_bytes());
+                } else if parts[0] == "get_image" {
+                    img_req_tx.send(()).expect("Cannot request image");
+                    loop {
+                        match img_resp_rx.recv().expect("Cannot receive image") {
+                            Some(buf) => bw.write_all(&buf).expect("Cannot forward image"),
+                            None => { break; }
+                        }
+                    }
                 } else {
                     bw.write(b"Unknown command\n");
                 }
@@ -99,9 +110,17 @@ fn main() {
             }
             let mut sil = stdin.lock();
             if check_errors_and_eof(sil.read_exact(& mut frame),  "Can't read frame") { return (); }
+            if let Ok(_) = img_req_rx.try_recv() {
+                img_resp_tx.send(Some(frame.to_vec())).expect("Cannot send frame to socket handler");
+                img_resp_tx.send(None).expect("Cannot send end-of-frame to socket handler");
+            }
             if check_errors_and_eof(sol.write_all (&     frame), "Can't write frame") { return (); }
         } else {
-            let cropped = match read_cropped(&crop_read, &stdin) {
+            let rc_tx = match img_req_rx.try_recv() {
+                Ok(_) => Some(&img_resp_tx),
+                _ => None
+            };
+            let cropped = match read_cropped(&crop_read, &stdin, rc_tx) {
                 Some(c) => c,
                 None => return ()
             };
@@ -161,7 +180,7 @@ fn main() {
     }
 }
 
-fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<Vec<u8>> {
+fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin, img_resp_tx: Option<& mpsc::Sender<Option<Vec<u8>>>>) -> Option<Vec<u8>> {
     let crop = p.lock().expect("Cannot lock crop parameters for reading");
 
     let mut skip_front: Vec<u8> = vec![0; (crop.y as usize * WIDTH + crop.x as usize) * BYTES_PER_PIXEL];
@@ -174,14 +193,26 @@ fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin) -> Option<Vec<u8>> {
     let mut sil = stdin.lock();
     if check_errors_and_eof(sil.read_exact(& mut skip_front),    "Can't read frame") { return None; }
     if check_errors_and_eof(sil.read_exact(& mut line),          "Can't read frame") { return None; }
+    if let Some(tx) = img_resp_tx {
+        tx.send(Some(skip_front.to_vec())).expect("Cannot send frame to socket handler");
+        tx.send(Some(line.to_vec())).expect("Cannot send frame to socket handler");
+    }
 
     frame.extend(line.iter().cloned());
     for _ in 1..crop.h {
         if check_errors_and_eof(sil.read_exact(& mut skip_line), "Can't read frame") { return None; }
         if check_errors_and_eof(sil.read_exact(& mut line),      "Can't read frame") { return None; }
         frame.extend(line.iter().cloned());
+        if let Some(tx) = img_resp_tx {
+            tx.send(Some(skip_line.to_vec())).expect("Cannot send frame to socket handler");
+            tx.send(Some(line.to_vec())).expect("Cannot send frame to socket handler");
+        }
     }
     if check_errors_and_eof(sil.read_exact(& mut skip_back),     "Can't read frame") { return None; }
+    if let Some(tx) = img_resp_tx {
+        tx.send(Some(skip_back)).expect("Cannot send frame to socket handler");
+        tx.send(None).expect("Cannot send end-of-frame to socket handler");
+    }
 
     Some(frame)
 }
