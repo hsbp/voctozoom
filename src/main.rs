@@ -78,11 +78,10 @@ fn main() {
                         Err(msg) => msg
                     };
                     bw.write(&format!("{}\n", reply).into_bytes());
-                    bw.flush();
                 } else {
                     bw.write(b"Unknown command\n");
-                    bw.flush();
                 }
+                bw.flush();
             }
         }
     });
