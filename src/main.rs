@@ -78,6 +78,8 @@ fn main() {
                         Err(msg) => msg
                     };
                     bw.write(&format!("{}\n", reply).into_bytes());
+                } else if parts[0] == "get_resolution" {
+                    bw.write(&format!("{}x{}\n", WIDTH, HEIGHT).into_bytes());
                 } else {
                     bw.write(b"Unknown command\n");
                 }
