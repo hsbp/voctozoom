@@ -1,3 +1,4 @@
+use std::env;
 use std::io;
 use std::io::{BufRead,BufReader,BufWriter,Read,Stdin,Write};
 use std::net::TcpListener;
@@ -10,6 +11,7 @@ const HEIGHT: usize = 720;
 const BYTES_PER_PIXEL: usize = 3;
 const BYTES_PER_FRAME: usize = WIDTH * HEIGHT * BYTES_PER_PIXEL;
 const FULL_CROP: Crop = Crop { x: 0, y: 0, w: WIDTH as u16, h: HEIGHT as u16 };
+const DEFAULT_PORT: &str = "20000";
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 struct Crop {
@@ -43,6 +45,19 @@ fn parse_zoom_to(parts: Vec<&str>) -> Result<Crop, &str> {
 }
 
 fn main() {
+    let mut args = env::args();
+    let execname = args.next();
+    let port = match args.next() {
+        Some(p) => p,
+        None => String::from(DEFAULT_PORT),
+    };
+    if port == "-h" {
+        eprintln!("Usage: {} [port]", execname.unwrap());
+        return;
+    }
+    let bind_addr = format!("127.0.0.1:{}", port);
+    let listener = TcpListener::bind(&bind_addr).expect(&format!("Cannot bind to {}", bind_addr));
+
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut sol = stdout.lock();
@@ -59,8 +74,6 @@ fn main() {
     let (img_resp_tx, img_resp_rx): (mpsc::Sender<Option<Vec<u8>>>, mpsc::Receiver<Option<Vec<u8>>>) = mpsc::channel();
 
     thread::spawn(move || {
-        let listener = TcpListener::bind("127.0.0.1:20000").expect("Cannot bind to port 20000");
-
         'streams: for accepted in listener.incoming() {
             let stream = accepted.expect("Cannot accept connection");
             let br = BufReader::new(&stream);
