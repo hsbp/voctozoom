@@ -78,7 +78,7 @@ fn main() {
             let stream = accepted.expect("Cannot accept connection");
             let br = BufReader::new(&stream);
             let mut bw = BufWriter::new(&stream);
-            'lines: for line in br.lines() {
+            for line in br.lines() {
                 let payload = match line {
                     Err(_) => continue 'streams,
                     Ok(p) => p,
