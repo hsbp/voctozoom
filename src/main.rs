@@ -120,7 +120,7 @@ fn main() {
             }
             let mut sil = stdin.lock();
             if check_errors_and_eof(sil.read_exact(& mut frame),  "Can't read frame") { return; }
-            if let Ok(_) = img_req_rx.try_recv() {
+            if img_req_rx.try_recv().is_ok() {
                 img_resp_tx.send(Some(frame.to_vec())).expect("Cannot send frame to socket handler");
                 img_resp_tx.send(None).expect("Cannot send end-of-frame to socket handler");
             }
