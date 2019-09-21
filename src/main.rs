@@ -114,17 +114,17 @@ fn main() {
             if let Some(ffmpeg) = scaler {
                 let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
                 scaler = None;
-                if check_errors_and_eof(sol.write_all(&out.stdout), "Can't write old scaler output frame") { return (); }
+                if check_errors_and_eof(sol.write_all(&out.stdout), "Can't write old scaler output frame") { return; }
                 scaler_w = FULL_CROP.w;
                 scaler_h = FULL_CROP.h;
             }
             let mut sil = stdin.lock();
-            if check_errors_and_eof(sil.read_exact(& mut frame),  "Can't read frame") { return (); }
+            if check_errors_and_eof(sil.read_exact(& mut frame),  "Can't read frame") { return; }
             if let Ok(_) = img_req_rx.try_recv() {
                 img_resp_tx.send(Some(frame.to_vec())).expect("Cannot send frame to socket handler");
                 img_resp_tx.send(None).expect("Cannot send end-of-frame to socket handler");
             }
-            if check_errors_and_eof(sol.write_all (&     frame), "Can't write frame") { return (); }
+            if check_errors_and_eof(sol.write_all (&     frame), "Can't write frame") { return; }
         } else {
             let rc_tx = match img_req_rx.try_recv() {
                 Ok(_) => Some(&img_resp_tx),
@@ -132,7 +132,7 @@ fn main() {
             };
             let cropped = match read_cropped(&crop_read, &stdin, rc_tx) {
                 Some(c) => c,
-                None => return ()
+                None => return
             };
 
             {
@@ -140,7 +140,7 @@ fn main() {
                 if scaler_w != crop_check.w || scaler_h != crop_check.h {
                     if let Some(ffmpeg) = scaler {
                         let out = ffmpeg.wait_with_output().expect("Failed to wait on old scaler");
-                        if check_errors_and_eof(sol.write_all(&out.stdout), "Can't write old scaler output frame") { return (); }
+                        if check_errors_and_eof(sol.write_all(&out.stdout), "Can't write old scaler output frame") { return; }
                     }
                     scaler_w = crop_check.w;
                     scaler_h = crop_check.h;
@@ -181,7 +181,7 @@ fn main() {
                             if read_bytes == 0 { continue; }
                             write_offset += read_bytes;
 
-                            if check_errors_and_eof(sol.write_all(&frame[0..read_bytes]), "Can't write frame") { return (); }
+                            if check_errors_and_eof(sol.write_all(&frame[0..read_bytes]), "Can't write frame") { return; }
                         }
                     }
                 }
