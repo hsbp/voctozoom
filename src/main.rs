@@ -98,11 +98,8 @@ fn main() {
                     bw.write(&format!("{}x{}\n", WIDTH, HEIGHT).into_bytes());
                 } else if parts[0] == "get_image" {
                     img_req_tx.send(()).expect("Cannot request image");
-                    loop {
-                        match img_resp_rx.recv().expect("Cannot receive image") {
-                            Some(buf) => bw.write_all(&buf).expect("Cannot forward image"),
-                            None => { break; }
-                        }
+                    while let Some(buf) = img_resp_rx.recv().expect("Cannot receive image") {
+                        bw.write_all(&buf).expect("Cannot forward image");
                     }
                 } else {
                     bw.write(b"Unknown command\n");
