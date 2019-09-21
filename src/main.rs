@@ -23,10 +23,10 @@ struct Crop {
 
 fn parse_zoom_to(parts: Vec<&str>) -> Result<Crop, &str> {
     let params: Vec<&str> = match parts.get(1) {
-        Some(param) => param.split("+").collect(),
+        Some(param) => param.split('+').collect(),
         None => { return Err("Missing parameter"); }
     };
-    let resolution: Vec<Result<u16, std::num::ParseIntError>> = params[0].split("x").map(|s| s.parse::<u16>()).collect();
+    let resolution: Vec<Result<u16, std::num::ParseIntError>> = params[0].split('x').map(|s| s.parse::<u16>()).collect();
     let offsets: Vec<Result<u16, std::num::ParseIntError>> = params.iter().skip(1).map(|s| s.parse::<u16>()).collect();
     if resolution.len() != 2 || offsets.len() != 2 || resolution.iter().chain(offsets.iter()).any(Result::is_err) {
         return Err("Incorrect resolution syntax");
