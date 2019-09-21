@@ -56,7 +56,7 @@ fn main() {
         return;
     }
     let bind_addr = format!("127.0.0.1:{}", port);
-    let listener = TcpListener::bind(&bind_addr).expect(&format!("Cannot bind to {}", bind_addr));
+    let listener = TcpListener::bind(&bind_addr).unwrap_or_else(|_| panic!("Cannot bind to {}", bind_addr));
 
     let stdin = io::stdin();
     let stdout = io::stdout();
