@@ -13,6 +13,8 @@ const BYTES_PER_FRAME: usize = WIDTH * HEIGHT * BYTES_PER_PIXEL;
 const FULL_CROP: Crop = Crop { x: 0, y: 0, w: WIDTH as u16, h: HEIGHT as u16 };
 const DEFAULT_PORT: &str = "20000";
 
+type PixelTransfer = Option<Vec<u8>>;
+
 #[derive(Copy, Clone, PartialEq, Eq)]
 struct Crop {
     x: u16,
@@ -70,7 +72,7 @@ fn main() {
     let mut scaler_h = FULL_CROP.h;
 
     let (img_req_tx,  img_req_rx)  = mpsc::channel();
-    let (img_resp_tx, img_resp_rx): (mpsc::Sender<Option<Vec<u8>>>, mpsc::Receiver<Option<Vec<u8>>>) = mpsc::channel();
+    let (img_resp_tx, img_resp_rx): (mpsc::Sender<PixelTransfer>, mpsc::Receiver<PixelTransfer>) = mpsc::channel();
 
     thread::spawn(move || {
         'streams: for accepted in listener.incoming() {
@@ -189,7 +191,7 @@ fn main() {
     }
 }
 
-fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin, img_resp_tx: Option<& mpsc::Sender<Option<Vec<u8>>>>) -> Option<Vec<u8>> {
+fn read_cropped(p: & Arc<Mutex<Crop>>, stdin: & Stdin, img_resp_tx: Option<& mpsc::Sender<PixelTransfer>>) -> PixelTransfer {
     let crop = p.lock().expect("Cannot lock crop parameters for reading");
 
     let mut skip_front: Vec<u8> = vec![0; (crop.y as usize * WIDTH + crop.x as usize) * BYTES_PER_PIXEL];
