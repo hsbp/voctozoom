@@ -63,9 +63,8 @@ fn main() {
     let mut sol = stdout.lock();
     let mut frame: [u8; BYTES_PER_FRAME] = [0; BYTES_PER_FRAME];
 
-    let crop = Arc::new(Mutex::new(FULL_CROP));
-    let crop_read = crop.clone();
-    let crop_write = crop.clone();
+    let crop_read = Arc::new(Mutex::new(FULL_CROP));
+    let crop_write = crop_read.clone();
     let mut scaler: Option<Child> = None;
     let mut scaler_w = FULL_CROP.w;
     let mut scaler_h = FULL_CROP.h;
