@@ -24,19 +24,15 @@ struct Crop {
 }
 
 fn parse_zoom_to(parts: Vec<&str>) -> Result<Crop, &str> {
-    let params: Vec<&str> = match parts.get(1) {
-        Some(param) => param.split('+').collect(),
-        None => { return Err("Missing parameter"); }
-    };
-    let resolution: Vec<Result<u16, std::num::ParseIntError>> = params[0].split('x').map(|s| s.parse::<u16>()).collect();
-    let offsets: Vec<Result<u16, std::num::ParseIntError>> = params.iter().skip(1).map(|s| s.parse::<u16>()).collect();
-    if resolution.len() != 2 || offsets.len() != 2 || resolution.iter().chain(offsets.iter()).any(Result::is_err) {
-        return Err("Incorrect resolution syntax");
-    }
-    let w = *(resolution[0].as_ref().unwrap());
-    let h = *(resolution[1].as_ref().unwrap());
-    let x = *(offsets[0].as_ref().unwrap());
-    let y = *(offsets[1].as_ref().unwrap());
+    let params: Vec<&str> = parts.get(1).ok_or("Missing parameter")?.split('+').collect();
+    let resolution = params[0].split('x').map(|s| s.parse::<u16>())
+        .collect::<Result<Vec<_>, _>>().map_err(|_| "Incorrect resolution syntax")?;
+    let offsets = params.iter().skip(1).map(|s| s.parse::<u16>())
+        .collect::<Result<Vec<_>, _>>().map_err(|_| "Incorrect offset syntax")?;
+    let w = resolution[0];
+    let h = resolution[1];
+    let x = offsets[0];
+    let y = offsets[1];
     if w as usize + x as usize > WIDTH {
         return Err("Viewport is outside the screen in horizontal direction");
     }
@@ -49,10 +45,7 @@ fn parse_zoom_to(parts: Vec<&str>) -> Result<Crop, &str> {
 fn main() {
     let mut args = env::args();
     let execname = args.next();
-    let port = match args.next() {
-        Some(p) => p,
-        None => String::from(DEFAULT_PORT),
-    };
+    let port = args.next().unwrap_or_else(|| String::from(DEFAULT_PORT));
     if port == "-h" {
         eprintln!("Usage: {} [port]", execname.unwrap());
         return;
