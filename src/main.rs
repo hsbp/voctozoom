@@ -29,17 +29,17 @@ fn parse_zoom_to(parts: Vec<&str>) -> Result<Crop, &str> {
         .collect::<Result<Vec<_>, _>>().map_err(|_| "Incorrect resolution syntax")?;
     let offsets = params.iter().skip(1).map(|s| s.parse::<u16>())
         .collect::<Result<Vec<_>, _>>().map_err(|_| "Incorrect offset syntax")?;
-    let w = resolution[0];
-    let h = resolution[1];
-    let x = offsets[0];
-    let y = offsets[1];
-    if w as usize + x as usize > WIDTH {
-        return Err("Viewport is outside the screen in horizontal direction");
+    if let ([w, h], [x, y]) = (&*resolution, &*offsets) {
+        if *w as usize + *x as usize > WIDTH {
+            return Err("Viewport is outside the screen in horizontal direction");
+        }
+        if *h as usize + *y as usize > HEIGHT {
+            return Err("Viewport is outside the screen in vertical direction");
+        }
+        Ok(Crop{ x: *x, y: *y, w: *w, h: *h })
+    } else {
+        Err("Incorrect number of '+' or 'x' separators")
     }
-    if h as usize + y as usize > HEIGHT {
-        return Err("Viewport is outside the screen in vertical direction");
-    }
-    Ok(Crop{ x, y, w, h })
 }
 
 fn main() {
