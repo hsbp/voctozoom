@@ -77,7 +77,7 @@ fn main() {
                     Err(_) => continue 'streams,
                     Ok(p) => p,
                 };
-                let parts: Vec<&str> = payload.trim().split(" ").collect();
+                let parts: Vec<&str> = payload.trim().split(' ').collect();
                 if parts[0] == "zoom_to" {
                     let reply = match parse_zoom_to(parts) {
                         Ok(new_crop) => {
