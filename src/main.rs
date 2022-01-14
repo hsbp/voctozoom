@@ -50,8 +50,8 @@ fn main() {
         eprintln!("Usage: {} [port]", execname.unwrap());
         return;
     }
-    let bind_addr = format!("127.0.0.1:{}", port);
-    let listener = TcpListener::bind(&bind_addr).unwrap_or_else(|_| panic!("Cannot bind to {}", bind_addr));
+    let bind_addr = format!("127.0.0.1:{port}");
+    let listener = TcpListener::bind(&bind_addr).unwrap_or_else(|_| panic!("Cannot bind to {bind_addr}"));
 
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -87,9 +87,9 @@ fn main() {
                         },
                         Err(msg) => msg
                     };
-                    bw.write(&format!("{}\n", reply).into_bytes());
+                    bw.write(&format!("{reply}\n").into_bytes());
                 } else if parts[0] == "get_resolution" {
-                    bw.write(&format!("{}x{}\n", WIDTH, HEIGHT).into_bytes());
+                    bw.write(&format!("{WIDTH}x{HEIGHT}\n").into_bytes());
                 } else if parts[0] == "get_image" {
                     img_req_tx.send(()).expect("Cannot request image");
                     while let Some(buf) = img_resp_rx.recv().expect("Cannot receive image") {
@@ -142,9 +142,9 @@ fn main() {
                         .arg("-loglevel").arg("quiet")
                         .arg("-f").arg("rawvideo")
                         .arg("-pixel_format").arg("rgb24")
-                        .arg("-s").arg(format!("{}x{}", scaler_w, scaler_h))
+                        .arg("-s").arg(format!("{scaler_w}x{scaler_h}"))
                         .arg("-i").arg("-")
-                        .arg("-filter:v").arg(format!("scale={}:{}", WIDTH, HEIGHT))
+                        .arg("-filter:v").arg(format!("scale={WIDTH}:{HEIGHT}"))
                         .arg("-f").arg("rawvideo")
                         .arg("-pixel_format").arg("rgb24")
                         .arg("-")
